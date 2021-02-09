@@ -19,6 +19,7 @@
         <module>isiyi-springboot-websocket</module>
         <module>isiyi-websocket-broadcast</module>
         <module>isiyi-websocket-p2p</module>
+        <module>isiyi-nio</module>
     </modules>
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
