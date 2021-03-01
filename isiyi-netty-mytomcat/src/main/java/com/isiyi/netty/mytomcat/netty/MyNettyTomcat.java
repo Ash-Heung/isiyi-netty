@@ -5,15 +5,11 @@ import com.isiyi.netty.mytomcat.io.MyResponse;
 import com.isiyi.netty.mytomcat.io.MyServlet;
 import com.isiyi.netty.mytomcat.io.MyTomcat;
 import io.netty.bootstrap.ServerBootstrap;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelOption;
-import io.netty.channel.EventLoopGroup;
+import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.handler.codec.http.HttpRequestDecoder;
-import io.netty.handler.codec.http.HttpResponseDecoder;
+import io.netty.handler.codec.http.*;
 
 import java.io.FileInputStream;
 import java.io.InputStream;
@@ -28,7 +24,7 @@ public class MyNettyTomcat {
 
     private int port = 8080;
     private ServerSocket server;
-    private Map<String, MyServlet> servletMap = new HashMap<>();
+    private Map<String, MyNettyServlet> servletMap = new HashMap<>();
 
     private Properties webXml = new Properties();
 
@@ -48,7 +44,7 @@ public class MyNettyTomcat {
 
                     String className = webXml.getProperty(servletName + ".className");
                     //单实例，多线程
-                    MyServlet obj = (MyServlet) Class.forName(className).newInstance();
+                    MyNettyServlet obj = (MyNettyServlet) Class.forName(className).newInstance();
                     servletMap.put(url, obj);
                 }
             }
@@ -75,8 +71,8 @@ public class MyNettyTomcat {
                         protected void initChannel(SocketChannel socketChannel) throws Exception {
 
                             socketChannel.pipeline()
-                                    .addLast(new HttpResponseDecoder())
                                     .addLast(new HttpRequestDecoder())
+                                    .addLast(new HttpResponseEncoder())
                                     .addLast(new MyTomcatHandler());
                         }
                     })
@@ -96,33 +92,32 @@ public class MyNettyTomcat {
         }
     }
 
-    private void process(Socket accept) throws Exception{
 
-        InputStream inputStream = accept.getInputStream();
-        OutputStream outputStream = accept.getOutputStream();
-        // 处理请求头
-        MyRequest request = new MyRequest(inputStream);
-        MyResponse response = new MyResponse(outputStream);
+    public class MyTomcatHandler extends ChannelInboundHandlerAdapter {
 
-        // 从协议内容获取URL， 把相应的反射进行实例化
-        String url = request.getUrl();
+        @Override
+        public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+            if(msg instanceof HttpRequest){
+                HttpRequest req = (HttpRequest) msg;
+                //转交给我们自定义的request
+                MyNettyRequest request = new MyNettyRequest(ctx, req);
+                //转交给我们自定义的response
+                MyNettyResponse response = new MyNettyResponse(ctx, req);
 
-        if(servletMap.containsKey(url)){
-            servletMap.get(url).service(request, response);
-        }else {
-            response.write("404-NOT_FOUND");
+                String url = request.getUrl();
+
+                System.out.println("servletMap:"+servletMap.toString());
+                if(servletMap.containsKey(url)){
+                    servletMap.get(url).service(request, response);
+                }else {
+                    response.write("404-NOT-FOUND");
+                }
+            }
         }
-
-        outputStream.flush();
-        outputStream.close();
-
-        inputStream.close();
-
-        accept.close();
     }
 
     public static void main(String[] args) {
-        new MyTomcat().start();
+        new MyNettyTomcat().start();
     }
 
 }
